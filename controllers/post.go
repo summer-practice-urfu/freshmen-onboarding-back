@@ -25,29 +25,63 @@ func NewPostController(logger *log.Logger, stor *storages.PostStorage) *PostCont
 func (c *PostController) Register(basePath string, router *mux.Router) {
 	router.HandleFunc(basePath, c.AddPost).Methods("POST")
 	router.HandleFunc(basePath, c.GetPosts).Methods("GET")
-	router.HandleFunc(basePath+"/{id}", c.GetPost).Methods("GET")
-	router.HandleFunc(basePath+"/{id}", c.DeletePost).Methods("DELETE")
 	router.HandleFunc(basePath, c.UpdatePost).Methods("PUT")
 
+	router.HandleFunc(basePath+"/{id}", c.GetPost).Methods("GET")
+	router.HandleFunc(basePath+"/{id}", c.DeletePost).Methods("DELETE")
+
+	router.HandleFunc(basePath+"/{id}/inc", c.Increment).Methods("PUT")
+	router.HandleFunc(basePath+"/{id}/dec", c.Decrement).Methods("PUT")
 }
 
-type PostAddDTO struct {
-	Title   string  `json:"title"`
-	Content string  `json:"content"`
-	Img     *string `json:"image"`
+func (c *PostController) Increment(w http.ResponseWriter, r *http.Request) {
+	c.changeRating(1, w, r)
+}
+
+func (c *PostController) Decrement(w http.ResponseWriter, r *http.Request) {
+	c.changeRating(-1, w, r)
+}
+
+func (c *PostController) changeRating(delta int, w http.ResponseWriter, r *http.Request) {
+	id, err := c.getId(w, r)
+	if err != nil {
+		return
+	}
+	post, err := c.stor.GetOne(id)
+	if err != nil || post == nil {
+		c.logger.Println("Unexisted id: ", id)
+		http.Error(w, "Id does not exist, id: "+id, http.StatusBadRequest)
+		return
+	}
+	post.Rating += delta
+	if err := c.stor.Update(post); err != nil {
+		c.logger.Println("Error updating post, \nPost: ", post, "\n Error: ", err.Error())
+		http.Error(w, "Internal server", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (c *PostController) AddPost(w http.ResponseWriter, r *http.Request) {
-	var post PostAddDTO
+	var post models.PostAddDTO
 	if err := json.NewDecoder(r.Body).Decode(&post); err != nil {
 		c.logger.Println("Error decoding AddPost()\n Post: ", post, "\nError: ", err.Error())
 		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
 	}
+	c.logger.Println("Decoded post in AddPost(),\n Post: ", post)
+
+	if post.Title == nil {
+		c.logger.Println("Error post create without title,\n Post: ", post)
+		http.Error(w, "Creating post without title", http.StatusBadRequest)
+		return
+	}
+
 	id, err := c.stor.Create(post.Title, post.Content, post.Img)
 
 	if err != nil {
 		c.logger.Println("Error creating post AddPost()\n Post: ", post, "\nError: ", err.Error())
 		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
 	}
 	resp := struct {
 		Id string `json:"id"`
@@ -55,6 +89,7 @@ func (c *PostController) AddPost(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		c.logger.Println("Error encoding id AddPost()\n Post: ", post, "\nId: ", id, "\nError: ", err.Error())
 		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
 	}
 }
 
@@ -100,6 +135,7 @@ func (c *PostController) DeletePost(w http.ResponseWriter, r *http.Request) {
 	if err := c.stor.Delete(id); err != nil {
 		c.logger.Println("Error deleting post in DeletePost() \nError: ", err.Error())
 		http.Error(w, "id not found", http.StatusBadRequest)
+		return
 	}
 }
 

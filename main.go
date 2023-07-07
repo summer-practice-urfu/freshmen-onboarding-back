@@ -28,16 +28,6 @@ func (a *app) ListenAndServe(port string) {
 }
 
 func main() {
-	if file, err := os.Open(".env"); err != nil {
-		log.Fatal("Os can't open .env")
-	} else {
-		bytes := make([]byte, 32)
-		content := ""
-		for _, err2 := file.Read(bytes); err2 != nil; {
-			content += string(bytes)
-		}
-		log.Printf("Content: %v", content)
-	}
 	if err := godotenv.Load(".env"); err != nil {
 		log.Fatal("No .env file found")
 	}

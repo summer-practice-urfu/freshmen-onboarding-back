@@ -16,10 +16,28 @@ type PostStorage struct {
 }
 
 func NewPostStorage(conn *pgx.Conn, logger *log.Logger) *PostStorage {
-	return &PostStorage{
+	stor := &PostStorage{
 		conn:      conn,
 		logger:    logger,
 		tableName: "public.\"Posts\"",
+	}
+	stor.createTableIfNotExist()
+
+	return stor
+}
+
+func (s *PostStorage) createTableIfNotExist() {
+	_, err := s.conn.Exec(context.Background(), "CREATE TABLE IF NOT EXISTS public.\"Posts\"\n"+
+		"(\n   id uuid NOT NULL,"+
+		"\n    title text COLLATE pg_catalog.\"default\" NOT NULL,"+
+		"\n    content text COLLATE pg_catalog.\"default\","+
+		"\n    rating integer NOT NULL DEFAULT 0,"+
+		"\n    img text COLLATE pg_catalog.\"default\","+
+		"\n    CONSTRAINT \"Posts_pkey\" PRIMARY KEY (id)"+
+		"\n    )")
+	if err != nil {
+
+		panic(err)
 	}
 }
 
@@ -60,7 +78,7 @@ func (s *PostStorage) GetMany(ids []int) ([]models.Post, error) {
 	return tasks, nil
 }
 
-func (s *PostStorage) Create(title, content string, img *string) (string, error) {
+func (s *PostStorage) Create(title, content, img *string) (string, error) {
 	id := uuid.New().String()
 	_, err := s.conn.Exec(context.Background(), "Insert into "+s.tableName+
 		" (id, title, content, img) values ($1, $2, $3, $4)", id, title, content, img)
@@ -71,8 +89,9 @@ func (s *PostStorage) Update(newPost *models.Post) error {
 	_, err := s.conn.Exec(context.Background(), "update "+s.tableName+
 		" set title=$2,"+
 		" content=$3,"+
-		" img=$4 "+
-		"where id=$1", newPost.Id, newPost.Title, newPost.Content, newPost.Img)
+		" rating=$4,"+
+		" img=$5 "+
+		"where id=$1", newPost.Id, newPost.Title, newPost.Content, newPost.Rating, newPost.Img)
 	return err
 }
 

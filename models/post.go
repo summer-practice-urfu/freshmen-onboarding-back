@@ -1,9 +1,15 @@
 package models
 
 type Post struct {
-	Id      string `json:"id"`
-	Title   string `json:"title"`
-	Content string `json:"content"`
-	Rating  int    `json:"rating"`
-	Img     string `json:"img"`
+	Id      string  `json:"id"`
+	Title   string  `json:"title"`
+	Content string  `json:"content"`
+	Rating  int     `json:"rating"`
+	Img     *string `json:"img"`
+}
+
+type PostAddDTO struct {
+	Title   *string `json:"title"`
+	Content *string `json:"content"`
+	Img     *string `json:"image"`
 }
