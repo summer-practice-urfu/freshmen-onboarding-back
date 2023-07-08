@@ -48,6 +48,9 @@ func (s *PostStorage) GetOne(id string) (*models.Post, error) {
 	}
 	var post models.Post
 	if err := pgxscan.ScanOne(&post, row); err != nil {
+		if pgxscan.NotFound(err) {
+			return nil, err
+		}
 		panic(err)
 	}
 	return &post, nil
@@ -59,11 +62,11 @@ func (s *PostStorage) GetAll(limit int) ([]models.Post, error) {
 		s.logger.Println("Error in GetAll() \nError: ", err.Error())
 		return nil, err
 	}
-	var tasks []models.Post
-	if err := pgxscan.ScanAll(&tasks, rows); err != nil {
+	var posts []models.Post
+	if err := pgxscan.ScanAll(&posts, rows); err != nil {
 		panic(err)
 	}
-	return tasks, nil
+	return posts, nil
 }
 
 func (s *PostStorage) GetMany(ids []int) ([]models.Post, error) {
@@ -99,4 +102,8 @@ func (s *PostStorage) Delete(id string) error {
 	_, err := s.conn.Exec(context.Background(), "delete from "+s.tableName+
 		"where id=$1", id)
 	return err
+}
+
+func (s *PostStorage) SearchES() {
+
 }

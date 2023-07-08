@@ -9,23 +9,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 )
-
-type app struct {
-	router *mux.Router
-	server *http.Server
-	logger *log.Logger
-}
-
-func (a *app) ListenAndServe(port string) {
-	a.server.Addr = port
-	a.server.Handler = a.router
-	a.logger.Println("Server listening on port ", port)
-	err := a.server.ListenAndServe()
-	if err != nil {
-		a.logger.Fatal("Can't start server, err: ", err.Error())
-	}
-}
 
 func main() {
 	if err := godotenv.Load(".env"); err != nil {
@@ -39,18 +24,40 @@ func main() {
 
 	app.router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Add("Content-Type", "application/json")
+			app.logger.Println("Request on url: ", r.URL.String())
+			if !strings.HasPrefix(r.URL.String(), "/acc/verify") {
+				app.logger.Println("Setting content-type to json")
+				w.Header().Add("Content-Type", "application/json")
+			}
 			next.ServeHTTP(w, r)
 		})
 	})
 
 	app.router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		app.logger.Println("serving")
+		if c, err := r.Cookie("session_token"); err != nil {
+			app.logger.Println("Got token in '/': ", c)
+		} else {
+			app.logger.Println("Got no cookie in '/'")
+		}
 	})
 
 	base := db.Init(app.logger)
 	defer base.Close()
-	ts := controllers.NewPostController(app.logger, storages.NewPostStorage(base.Conn, app.logger))
-	ts.Register("/post", app.router)
+
+	redis, err := db.NewRedisDb()
+	if err != nil {
+		app.logger.Fatal("Can't connect to redis")
+	} else {
+		app.logger.Println("Connected to redis")
+	}
+
+	sessionStorage := storages.NewSessionStorage(redis, app.logger)
+
+	pc := controllers.NewPostController(app.logger, storages.NewPostStorage(base.Conn, app.logger), sessionStorage)
+	pc.Register("/post", app.router)
+
+	ac := controllers.NewAccountController(app.logger, sessionStorage)
+	ac.Register("/acc", app.router)
+
 	app.ListenAndServe(":8080")
 }

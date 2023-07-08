@@ -4,6 +4,7 @@ import (
 	"TaskService/models"
 	"TaskService/storages"
 	"encoding/json"
+	"errors"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"log"
@@ -11,14 +12,16 @@ import (
 )
 
 type PostController struct {
-	logger *log.Logger
-	stor   *storages.PostStorage
+	logger      *log.Logger
+	stor        *storages.PostStorage
+	sessionStor *storages.SessionStorage
 }
 
-func NewPostController(logger *log.Logger, stor *storages.PostStorage) *PostController {
+func NewPostController(logger *log.Logger, stor *storages.PostStorage, sessionStor *storages.SessionStorage) *PostController {
 	return &PostController{
-		logger: logger,
-		stor:   stor,
+		logger:      logger,
+		stor:        stor,
+		sessionStor: sessionStor,
 	}
 }
 
@@ -34,11 +37,37 @@ func (c *PostController) Register(basePath string, router *mux.Router) {
 	router.HandleFunc(basePath+"/{id}/dec", c.Decrement).Methods("PUT")
 }
 
+type TokenDTO struct {
+	SessionToken string `json:"sessionToken"`
+}
+
 func (c *PostController) Increment(w http.ResponseWriter, r *http.Request) {
+	tokenDto, err := c.getSessionToken(w, r)
+	if err != nil {
+		return
+	}
+
+	if err := c.checkSessionToken(tokenDto, w); err != nil {
+		return
+	}
+
+	c.logger.Println("Token in Increment(): ", tokenDto.SessionToken)
+
 	c.changeRating(1, w, r)
 }
 
 func (c *PostController) Decrement(w http.ResponseWriter, r *http.Request) {
+	tokenDto, err := c.getSessionToken(w, r)
+	if err != nil {
+		return
+	}
+
+	if err := c.checkSessionToken(tokenDto, w); err != nil {
+		return
+	}
+
+	c.logger.Println("Token in Decrement(): ", tokenDto.SessionToken)
+
 	c.changeRating(-1, w, r)
 }
 
@@ -161,4 +190,33 @@ func (c *PostController) getId(w http.ResponseWriter, r *http.Request) (string, 
 		return id, err
 	}
 	return id, nil
+}
+
+func (c *PostController) getSessionToken(w http.ResponseWriter, r *http.Request) (*TokenDTO, error) {
+	var tokenDto *TokenDTO
+	if err := json.NewDecoder(r.Body).Decode(&tokenDto); err != nil {
+		c.logger.Println("Error decoding tokenDto in Increment(), Error: ", err.Error())
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return nil, errors.New("invalid body")
+	}
+	return tokenDto, nil
+}
+
+func (c *PostController) checkSessionToken(tokenDto *TokenDTO, w http.ResponseWriter) error {
+	if tokenDto.SessionToken == "" {
+		c.logger.Println("Got no token in Increment()")
+		http.Error(w, "Got no sessonToken", http.StatusUnauthorized)
+		return errors.New("no token")
+	}
+
+	if userVk, err := c.sessionStor.GetSession(tokenDto.SessionToken); err != nil || !userVk.Valid() {
+		c.logger.Println("Expired token in Increment(), token: ", tokenDto.SessionToken)
+		if err != nil {
+			c.logger.Println("Error: ", err.Error())
+		}
+		http.Error(w, "Token expired", http.StatusUnauthorized)
+		return errors.New("token expired")
+	}
+
+	return nil
 }
