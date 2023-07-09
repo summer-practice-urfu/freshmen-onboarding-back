@@ -86,8 +86,6 @@ func (c *AccountController) LogOut(w http.ResponseWriter, r *http.Request) {
 func (c *AccountController) Verify(w http.ResponseWriter, r *http.Request) {
 	c.logger.Println("Verify() url: ", r.URL)
 	queryCode := r.URL.Query()["code"]
-	params := r.URL.Query()
-	c.logger.Println("Verify() params: ", params)
 	if len(queryCode) < 1 {
 		c.logger.Println("Invalid code param: ", queryCode)
 		http.Error(w, "Invalid code param", http.StatusBadRequest)

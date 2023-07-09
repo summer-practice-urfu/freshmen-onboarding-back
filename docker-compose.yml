@@ -14,12 +14,13 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - ELASTICSEARCH_HOST=elasticsearch:9200
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgrespw
       - POSTGRES_DB=test
+      - REDIS_URL=redis:6379
     networks:
       - mynetwork
 
@@ -28,6 +29,8 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
     networks:
       - mynetwork
     healthcheck:

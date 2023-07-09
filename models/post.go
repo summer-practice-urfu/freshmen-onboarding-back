@@ -9,7 +9,13 @@ type Post struct {
 }
 
 type PostAddDTO struct {
-	Title   *string `json:"title"`
-	Content *string `json:"content"`
-	Img     *string `json:"image"`
+	Title   string `json:"title"`
+	Content string `json:"content,omitempty"`
+	Img     string `json:"image,omitempty"`
+}
+
+type PostES struct {
+	Id      string `json:"id"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
 }

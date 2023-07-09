@@ -1,25 +1,32 @@
 package storages
 
 import (
+	"TaskService/db"
 	"TaskService/models"
 	"context"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	pgx "github.com/jackc/pgx/v5"
 	"log"
 )
 
 type PostStorage struct {
-	conn      *pgx.Conn
-	logger    *log.Logger
-	tableName string
+	conn         *pgx.Conn
+	logger       *log.Logger
+	tableName    string
+	es           *db.EsDb
+	esIndex      string
+	esPostFields []string
 }
 
-func NewPostStorage(conn *pgx.Conn, logger *log.Logger) *PostStorage {
+func NewPostStorage(logger *log.Logger, conn *pgx.Conn, es *db.EsDb) *PostStorage {
 	stor := &PostStorage{
-		conn:      conn,
-		logger:    logger,
-		tableName: "public.\"Posts\"",
+		conn:         conn,
+		logger:       logger,
+		tableName:    "public.\"Posts\"",
+		es:           es,
+		esIndex:      "post",
+		esPostFields: []string{"title", "content"},
 	}
 	stor.createTableIfNotExist()
 
@@ -69,8 +76,8 @@ func (s *PostStorage) GetAll(limit int) ([]models.Post, error) {
 	return posts, nil
 }
 
-func (s *PostStorage) GetMany(ids []int) ([]models.Post, error) {
-	rows, err := s.conn.Query(context.Background(), "select * from "+s.tableName+" where id = ANY($1::int[])", ids)
+func (s *PostStorage) GetMany(ids []string) ([]models.Post, error) {
+	rows, err := s.conn.Query(context.Background(), "select * from "+s.tableName+" where id = ANY($1::uuid[])", ids)
 	if err != nil {
 		return nil, err
 	}
@@ -81,10 +88,21 @@ func (s *PostStorage) GetMany(ids []int) ([]models.Post, error) {
 	return tasks, nil
 }
 
-func (s *PostStorage) Create(title, content, img *string) (string, error) {
+func (s *PostStorage) Create(title, content, img string) (string, error) {
 	id := uuid.New().String()
 	_, err := s.conn.Exec(context.Background(), "Insert into "+s.tableName+
 		" (id, title, content, img) values ($1, $2, $3, $4)", id, title, content, img)
+	if err != nil {
+		return "", nil
+	}
+	post := models.PostES{
+		Id:      id,
+		Title:   title,
+		Content: content,
+	}
+	if err := s.es.Index(s.esIndex, id, post); err != nil {
+		return "", nil
+	}
 	return id, err
 }
 
@@ -95,15 +113,50 @@ func (s *PostStorage) Update(newPost *models.Post) error {
 		" rating=$4,"+
 		" img=$5 "+
 		"where id=$1", newPost.Id, newPost.Title, newPost.Content, newPost.Rating, newPost.Img)
+
+	if err != nil {
+		return err
+	}
+
+	postES := &models.PostES{
+		Id:    newPost.Id,
+		Title: newPost.Title,
+	}
+	if newPost.Content != nil {
+		postES.Content = *newPost.Content
+	}
+
+	err = s.es.Update(s.esIndex, newPost.Id, newPost)
 	return err
 }
 
 func (s *PostStorage) Delete(id string) error {
-	_, err := s.conn.Exec(context.Background(), "delete from "+s.tableName+
+	err := s.es.Delete(s.esIndex, id)
+	if err != nil {
+		return err
+	}
+	_, err = s.conn.Exec(context.Background(), "delete from "+s.tableName+
 		"where id=$1", id)
 	return err
 }
 
-func (s *PostStorage) SearchES() {
+func (s *PostStorage) SearchES(query string, size, page int) (*struct {
+	Total int
+	Ids   []string
+}, error) {
+	res, err := s.es.Search(s.esIndex, query, s.esPostFields, size, page)
+	if err != nil {
+		s.logger.Println("Error in SearchES, \nError: ", err.Error())
+		return nil, err
+	}
 
+	ids := make([]string, len(res.Hits.Hits))
+	for i, hit := range res.Hits.Hits {
+		ids[i] = *hit.Id
+	}
+
+	return &struct {
+		Total int
+		Ids   []string
+	}{Total: len(ids), Ids: ids}, nil
 }

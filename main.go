@@ -44,6 +44,7 @@ func main() {
 	base := db.Init(app.logger)
 	defer base.Close()
 
+	app.logger.Println("Redis url: ", os.Getenv("REDIS_URL"))
 	redis, err := db.NewRedisDb()
 	if err != nil {
 		app.logger.Fatal("Can't connect to redis")
@@ -51,9 +52,11 @@ func main() {
 		app.logger.Println("Connected to redis")
 	}
 
+	es := db.NewEsDb(app.logger)
+
 	sessionStorage := storages.NewSessionStorage(redis, app.logger)
 
-	pc := controllers.NewPostController(app.logger, storages.NewPostStorage(base.Conn, app.logger), sessionStorage)
+	pc := controllers.NewPostController(app.logger, storages.NewPostStorage(app.logger, base.Conn, es), sessionStorage)
 	pc.Register("/post", app.router)
 
 	ac := controllers.NewAccountController(app.logger, sessionStorage)

@@ -9,6 +9,8 @@ import (
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 type PostController struct {
@@ -30,6 +32,8 @@ func (c *PostController) Register(basePath string, router *mux.Router) {
 	router.HandleFunc(basePath, c.GetPosts).Methods("GET")
 	router.HandleFunc(basePath, c.UpdatePost).Methods("PUT")
 
+	router.HandleFunc(basePath+"/search", c.Search).Methods("GET")
+
 	router.HandleFunc(basePath+"/{id}", c.GetPost).Methods("GET")
 	router.HandleFunc(basePath+"/{id}", c.DeletePost).Methods("DELETE")
 
@@ -39,6 +43,37 @@ func (c *PostController) Register(basePath string, router *mux.Router) {
 
 type TokenDTO struct {
 	SessionToken string `json:"sessionToken"`
+}
+
+func (c *PostController) Search(w http.ResponseWriter, r *http.Request) {
+	size, page, search, err := c.getSearchParams(w, r)
+	if err != nil {
+		return
+	}
+
+	esRes, err := c.stor.SearchES(search, size, page)
+	if err != nil {
+		c.logger.Println("Error in Search(), query: ", search, ", page: ", page, ", size", size, "\nError: ", err.Error())
+		http.Error(w, "Internal server", http.StatusInternalServerError)
+		return
+	}
+	c.logger.Println("Got ids: ", esRes)
+
+	posts, err := c.stor.GetMany(esRes.Ids)
+	if err != nil {
+		c.logger.Println("Error getting many posts by ids in Search(), Error: ", err.Error())
+		http.Error(w, "Internal server", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"total": esRes.Total,
+		"posts": posts,
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		c.logger.Printf("Error encoding posts in Search(), posts: %v", posts)
+	}
 }
 
 func (c *PostController) Increment(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +134,7 @@ func (c *PostController) AddPost(w http.ResponseWriter, r *http.Request) {
 	}
 	c.logger.Println("Decoded post in AddPost(),\n Post: ", post)
 
-	if post.Title == nil {
+	if post.Title == "" {
 		c.logger.Println("Error post create without title,\n Post: ", post)
 		http.Error(w, "Creating post without title", http.StatusBadRequest)
 		return
@@ -143,6 +178,7 @@ func (c *PostController) GetPost(w http.ResponseWriter, r *http.Request) {
 func (c *PostController) GetPosts(w http.ResponseWriter, _ *http.Request) {
 	limit := 100
 	tasks, err := c.stor.GetAll(limit)
+
 	if err != nil {
 		c.logger.Println("Error getting posts in GetPosts() \nError: ", err.Error())
 		http.Error(w, "Internal server", http.StatusInternalServerError)
@@ -219,4 +255,51 @@ func (c *PostController) checkSessionToken(tokenDto *TokenDTO, w http.ResponseWr
 	}
 
 	return nil
+}
+
+func (c *PostController) getSearchParams(w http.ResponseWriter, r *http.Request) (size int, page int, search string, err error) {
+	query := r.URL.Query()
+	pageQuery, ok := query["page"]
+	if !ok || len(pageQuery) < 1 {
+		c.logger.Println("Has no page in query for Search()")
+		http.Error(w, "Has no page in query for Search()", http.StatusBadRequest)
+		return 0, 0, "", errors.New("no page")
+	}
+	sizeQuery, ok := query["size"]
+	if !ok || len(sizeQuery) < 1 {
+		c.logger.Println("Has no size in query for Search()")
+		http.Error(w, "Has no size in query for Search()", http.StatusBadRequest)
+		return 0, 0, "", errors.New("no size")
+	}
+	searchQuery := query["search"]
+	page, err = strconv.Atoi(pageQuery[0])
+	if err != nil {
+		c.logger.Println("Page in Search() is not integer")
+		http.Error(w, "Page is not integer", http.StatusBadRequest)
+		return 0, 0, "", errors.New("page is not int")
+	}
+	if page < 1 {
+		c.logger.Println("Page in Search() is less than 1")
+		http.Error(w, "Page is less than 1", http.StatusBadRequest)
+		return 0, 0, "", errors.New("page is less than 1")
+	}
+
+	size, err = strconv.Atoi(sizeQuery[0])
+	if err != nil {
+		c.logger.Println("Size in Search() is not integer")
+		http.Error(w, "Size is not integer", http.StatusBadRequest)
+		return 0, 0, "", errors.New("size is not int")
+	}
+	if size < 1 {
+		c.logger.Println("Size in Search() is less than 1")
+		http.Error(w, "Size is less than 1", http.StatusBadRequest)
+		return 0, 0, "", errors.New("size is less than 1")
+	}
+
+	search = ""
+	if len(searchQuery) > 0 {
+		search = strings.TrimSpace(searchQuery[0])
+	}
+
+	return size, page, search, nil
 }
