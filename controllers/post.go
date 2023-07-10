@@ -76,8 +76,13 @@ func (c *PostController) Search(w http.ResponseWriter, r *http.Request) {
 		"posts": posts,
 	}
 
+	if posts == nil {
+	}
+
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		c.logger.Printf("Error encoding posts in Search(), posts: %v", posts)
+		http.Error(w, "Internal server", http.StatusInternalServerError)
+		return
 	}
 }
 

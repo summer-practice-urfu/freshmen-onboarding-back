@@ -29,8 +29,16 @@ func NewPostStorage(logger *log.Logger, conn *pgx.Conn, es *db.EsDb) *PostStorag
 		esPostFields: []string{"title", "content"},
 	}
 	stor.createTableIfNotExist()
+	stor.createIndexIfNotExist()
 
 	return stor
+}
+
+func (s *PostStorage) createIndexIfNotExist() {
+	if err := s.es.CreateIndex(s.esIndex); err != nil {
+		panic(err)
+	}
+	s.logger.Println("Created es index ", s.esIndex)
 }
 
 func (s *PostStorage) createTableIfNotExist() {
@@ -85,6 +93,10 @@ func (s *PostStorage) GetMany(ids []string) ([]models.Post, error) {
 	if err := pgxscan.ScanAll(&tasks, rows); err != nil {
 		panic(err)
 	}
+	if len(tasks) == 0 {
+		tasks = make([]models.Post, 0)
+	}
+
 	return tasks, nil
 }
 

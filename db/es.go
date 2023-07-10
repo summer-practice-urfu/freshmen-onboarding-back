@@ -24,6 +24,7 @@ func NewEsDb(logger *log.Logger) *EsDb {
 	if err != nil {
 		logger.Fatal("Can't connect to es")
 	}
+
 	defer res.Body.Close()
 	logger.Println("Connected to es")
 	return &EsDb{client: client, logger: logger}
@@ -47,6 +48,43 @@ type ESSearchResponseHitsInner struct {
 	Id     *string         `json:"_id"`
 	Score  *float32        `json:"_score"`
 	Source json.RawMessage `json:"_source"`
+}
+
+func (e *EsDb) CreateIndex(index string) error {
+	if exists := e.IndexExist(index); exists {
+		return nil
+	}
+
+	res, err := e.client.Indices.Create(
+		index,
+		e.client.Indices.Create.WithContext(context.Background()),
+	)
+	defer res.Body.Close()
+
+	if res.IsError() {
+		e.logger.Fatalf("Error error creating index: %s", res.String())
+	}
+
+	return err
+}
+
+func (e *EsDb) IndexExist(index string) bool {
+	res, err := e.client.Indices.Exists([]string{index})
+	if err != nil {
+		e.logger.Fatalf("Error checking if index exists: %s", err)
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		return false
+	}
+
+	if res.StatusCode == 200 {
+		e.logger.Printf("Index %s already exists", index)
+		return true
+	}
+
+	return res.StatusCode == 200
 }
 
 func (e *EsDb) Search(index, query string, fields []string, size, page int) (*ESSearchResponse, error) {

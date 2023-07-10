@@ -5,6 +5,7 @@ import (
 	"TaskService/db"
 	"TaskService/storages"
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 	"log"
 	"net/http"
 	"os"
@@ -12,11 +13,15 @@ import (
 )
 
 func main() {
+	_ = godotenv.Load()
+
 	app := app{
 		router: mux.NewRouter(),
 		server: &http.Server{},
 		logger: log.New(os.Stdout, "web ", log.LstdFlags),
 	}
+
+	app.router.Use(corsMiddleware)
 
 	app.router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,4 +66,19 @@ func main() {
 	ac.Register("/acc", app.router)
 
 	app.ListenAndServe(":8080")
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
