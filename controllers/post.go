@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"TaskService/models"
+	"TaskService/models/cache"
 	"TaskService/storages"
 	"encoding/json"
 	"errors"
@@ -14,16 +15,20 @@ import (
 )
 
 type PostController struct {
-	logger      *log.Logger
-	stor        *storages.PostStorage
-	sessionStor *storages.SessionStorage
+	logger             *log.Logger
+	postStor           *storages.PostStorage
+	sessionStor        *storages.SessionStorage
+	userPostRatingStor *storages.UserPostRatingStorage
 }
 
-func NewPostController(logger *log.Logger, stor *storages.PostStorage, sessionStor *storages.SessionStorage) *PostController {
+func NewPostController(logger *log.Logger, stor *storages.PostStorage,
+	sessionStor *storages.SessionStorage,
+	userPostRatingStor *storages.UserPostRatingStorage) *PostController {
 	return &PostController{
-		logger:      logger,
-		stor:        stor,
-		sessionStor: sessionStor,
+		logger:             logger,
+		postStor:           stor,
+		sessionStor:        sessionStor,
+		userPostRatingStor: userPostRatingStor,
 	}
 }
 
@@ -51,7 +56,7 @@ func (c *PostController) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	esRes, err := c.stor.SearchES(search, size, page)
+	esRes, err := c.postStor.SearchES(search, size, page)
 	if err != nil {
 		c.logger.Println("Error in Search(), query: ", search, ", page: ", page, ", size", size, "\nError: ", err.Error())
 		http.Error(w, "Internal server", http.StatusInternalServerError)
@@ -59,7 +64,7 @@ func (c *PostController) Search(w http.ResponseWriter, r *http.Request) {
 	}
 	c.logger.Println("Got ids: ", esRes)
 
-	posts, err := c.stor.GetMany(esRes.Ids)
+	posts, err := c.postStor.GetMany(esRes.Ids)
 	if err != nil {
 		c.logger.Println("Error getting many posts by ids in Search(), Error: ", err.Error())
 		http.Error(w, "Internal server", http.StatusInternalServerError)
@@ -82,13 +87,14 @@ func (c *PostController) Increment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := c.checkSessionToken(tokenDto, w); err != nil {
+	userVk, err := c.tryGetSession(tokenDto, w)
+	if err != nil {
 		return
 	}
 
 	c.logger.Println("Token in Increment(): ", tokenDto.SessionToken)
 
-	c.changeRating(1, w, r)
+	c.changeRating('-', userVk, w, r)
 }
 
 func (c *PostController) Decrement(w http.ResponseWriter, r *http.Request) {
@@ -97,28 +103,50 @@ func (c *PostController) Decrement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := c.checkSessionToken(tokenDto, w); err != nil {
+	userVk, err := c.tryGetSession(tokenDto, w)
+	if err != nil {
 		return
 	}
 
 	c.logger.Println("Token in Decrement(): ", tokenDto.SessionToken)
 
-	c.changeRating(-1, w, r)
+	c.changeRating('+', userVk, w, r)
 }
 
-func (c *PostController) changeRating(delta int, w http.ResponseWriter, r *http.Request) {
+func (c *PostController) changeRating(oper rune, userVk *cache.UserVk, w http.ResponseWriter, r *http.Request) {
 	id, err := c.getId(w, r)
 	if err != nil {
 		return
 	}
-	post, err := c.stor.GetOne(id)
+
+	if !c.userPostRatingStor.OperAllowed(oper) {
+		c.logger.Println("Invalid oper in changeRating(), oper: ", string(oper))
+		http.Error(w, "Internal server", http.StatusInternalServerError)
+		return
+	}
+
+	post, err := c.postStor.GetOne(id)
 	if err != nil || post == nil {
 		c.logger.Println("Unexisted id: ", id)
 		http.Error(w, "Id does not exist, id: "+id, http.StatusBadRequest)
 		return
 	}
+
+	userPostRating := &models.UserPostRating{
+		UserId: userVk.Info.Id,
+		PostId: id,
+		Oper:   oper,
+	}
+	if err := c.userPostRatingStor.SetUserOper(userPostRating); err != nil {
+		c.logger.Printf("Error changing rating in changeRating(), Oper: %v, Error: %v", oper, err.Error())
+		http.Error(w, "Internal server", http.StatusInternalServerError)
+		return
+	}
+
+	delta := c.userPostRatingStor.OperToDelta(oper)
+
 	post.Rating += delta
-	if err := c.stor.Update(post); err != nil {
+	if err := c.postStor.Update(post); err != nil {
 		c.logger.Println("Error updating post, \nPost: ", post, "\n Error: ", err.Error())
 		http.Error(w, "Internal server", http.StatusInternalServerError)
 		return
@@ -140,7 +168,7 @@ func (c *PostController) AddPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := c.stor.Create(post.Title, post.Content, post.Img)
+	id, err := c.postStor.Create(post.Title, post.Content, post.Img)
 
 	if err != nil {
 		c.logger.Println("Error creating post AddPost()\n Post: ", post, "\nError: ", err.Error())
@@ -162,7 +190,7 @@ func (c *PostController) GetPost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	post, err := c.stor.GetOne(id)
+	post, err := c.postStor.GetOne(id)
 	if err != nil {
 		c.logger.Println("Error getting post in GetOne() \nError: ", err.Error())
 		http.Error(w, "not found", http.StatusNotFound)
@@ -177,7 +205,7 @@ func (c *PostController) GetPost(w http.ResponseWriter, r *http.Request) {
 
 func (c *PostController) GetPosts(w http.ResponseWriter, _ *http.Request) {
 	limit := 100
-	tasks, err := c.stor.GetAll(limit)
+	tasks, err := c.postStor.GetAll(limit)
 
 	if err != nil {
 		c.logger.Println("Error getting posts in GetPosts() \nError: ", err.Error())
@@ -197,7 +225,7 @@ func (c *PostController) DeletePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := c.stor.Delete(id); err != nil {
+	if err := c.postStor.Delete(id); err != nil {
 		c.logger.Println("Error deleting post in DeletePost() \nError: ", err.Error())
 		http.Error(w, "id not found", http.StatusBadRequest)
 		return
@@ -211,7 +239,7 @@ func (c *PostController) UpdatePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid task", http.StatusBadRequest)
 		return
 	}
-	if err := c.stor.Update(newTask); err != nil {
+	if err := c.postStor.Update(newTask); err != nil {
 		c.logger.Println("Error updating task: ", newTask, "err: ", err.Error())
 		http.Error(w, "Internal server", http.StatusInternalServerError)
 		return
@@ -238,23 +266,24 @@ func (c *PostController) getSessionToken(w http.ResponseWriter, r *http.Request)
 	return tokenDto, nil
 }
 
-func (c *PostController) checkSessionToken(tokenDto *TokenDTO, w http.ResponseWriter) error {
+func (c *PostController) tryGetSession(tokenDto *TokenDTO, w http.ResponseWriter) (*cache.UserVk, error) {
 	if tokenDto.SessionToken == "" {
 		c.logger.Println("Got no token in Increment()")
 		http.Error(w, "Got no sessonToken", http.StatusUnauthorized)
-		return errors.New("no token")
+		return nil, errors.New("no token")
 	}
 
-	if userVk, err := c.sessionStor.GetSession(tokenDto.SessionToken); err != nil || !userVk.Valid() {
+	userVk, err := c.sessionStor.GetSession(tokenDto.SessionToken)
+	if err != nil || !userVk.Valid() {
 		c.logger.Println("Expired token in Increment(), token: ", tokenDto.SessionToken)
 		if err != nil {
 			c.logger.Println("Error: ", err.Error())
 		}
 		http.Error(w, "Token expired", http.StatusUnauthorized)
-		return errors.New("token expired")
+		return nil, errors.New("token expired")
 	}
 
-	return nil
+	return userVk, nil
 }
 
 func (c *PostController) getSearchParams(w http.ResponseWriter, r *http.Request) (size int, page int, search string, err error) {

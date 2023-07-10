@@ -5,7 +5,6 @@ import (
 	"TaskService/db"
 	"TaskService/storages"
 	"github.com/gorilla/mux"
-	"github.com/joho/godotenv"
 	"log"
 	"net/http"
 	"os"
@@ -13,9 +12,6 @@ import (
 )
 
 func main() {
-	if err := godotenv.Load(".env"); err != nil {
-		log.Fatal("No .env file found")
-	}
 	app := app{
 		router: mux.NewRouter(),
 		server: &http.Server{},
@@ -54,9 +50,11 @@ func main() {
 
 	es := db.NewEsDb(app.logger)
 
+	postStorage := storages.NewPostStorage(app.logger, base.Conn, es)
 	sessionStorage := storages.NewSessionStorage(redis, app.logger)
+	userPostRatingStorage := storages.NewUserPostRatingStorage(app.logger, base.Conn)
 
-	pc := controllers.NewPostController(app.logger, storages.NewPostStorage(app.logger, base.Conn, es), sessionStorage)
+	pc := controllers.NewPostController(app.logger, postStorage, sessionStorage, userPostRatingStorage)
 	pc.Register("/post", app.router)
 
 	ac := controllers.NewAccountController(app.logger, sessionStorage)

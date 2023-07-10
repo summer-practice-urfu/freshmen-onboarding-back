@@ -14,13 +14,15 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_URL=http://elastic:9200
+      - CLIENT_ID=51698048
+      - CLIENT_SECRET=A8hdQOOXeprimL8S1dJj
+      - REDIRECT_URL=http://localhost:8080/acc/verify
+      - REDIS_URL=redis_db:6379
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgrespw
-      - POSTGRES_DB=test
-      - REDIS_URL=redis:6379
     networks:
       - mynetwork
 

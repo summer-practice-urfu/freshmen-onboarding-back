@@ -1,7 +1,6 @@
 package storages
 
 import (
-	"TaskService/db"
 	"TaskService/models"
 	"context"
 	"errors"
@@ -11,10 +10,12 @@ import (
 )
 
 var (
-	OperPlus  = '+'
-	OperMinus = '-'
-	OperNone  = '0'
-	opers     = []rune{OperPlus, OperMinus, OperNone}
+	OperPlus    = '+'
+	OperMinus   = '-'
+	OperNone    = '0'
+	opers       = []rune{OperPlus, OperMinus, OperNone}
+	operToDelta = map[rune]int{OperPlus: 1, OperMinus: -1, OperNone: 0}
+	deltaToOper = map[int]rune{1: OperPlus, -1: OperMinus, 0: OperNone}
 )
 
 type UserPostRatingStorage struct {
@@ -23,7 +24,7 @@ type UserPostRatingStorage struct {
 	tableName string
 }
 
-func NewUserPostRatingStorage(logger *log.Logger, conn *pgx.Conn, es *db.EsDb) *UserPostRatingStorage {
+func NewUserPostRatingStorage(logger *log.Logger, conn *pgx.Conn) *UserPostRatingStorage {
 	stor := &UserPostRatingStorage{
 		conn:      conn,
 		logger:    logger,
@@ -51,7 +52,7 @@ func (s *UserPostRatingStorage) createTableIfNotExist() {
 	}
 }
 
-func (s *UserPostRatingStorage) GetUserOper(userId int, postId string) (*models.UserPostRating, error) {
+func (s *UserPostRatingStorage) GetUserOper(userId int64, postId string) (*models.UserPostRating, error) {
 	row, err := s.conn.Query(context.Background(), "SELECT \"userId\", \"postId\", oper "+
 		"\n FROM public.\"UserPostRating\""+
 		"\n WHERE \"postId\" = $1"+
@@ -70,7 +71,7 @@ func (s *UserPostRatingStorage) GetUserOper(userId int, postId string) (*models.
 }
 
 func (s *UserPostRatingStorage) SetUserOper(userPostRating *models.UserPostRating) error {
-	if !s.operAllowed(userPostRating.Oper) {
+	if !s.OperAllowed(userPostRating.Oper) {
 		return errors.New("invalid oper")
 	}
 
@@ -80,12 +81,23 @@ func (s *UserPostRatingStorage) SetUserOper(userPostRating *models.UserPostRatin
 		return s.CreateUserOper(userPostRating)
 	}
 
-	existing.Oper = userPostRating.Oper
+	if existing.Oper == userPostRating.Oper && existing.Oper != OperNone {
+		return NewDoubleOperError(userPostRating.Oper, nil)
+	}
+
+	if existing.Oper == OperNone {
+		return nil
+	}
+
+	newOperDelta := operToDelta[existing.Oper] + operToDelta[userPostRating.Oper]
+	newOper := deltaToOper[newOperDelta]
+
+	existing.Oper = newOper
 	return s.UpdateUserOper(userPostRating)
 }
 
 func (s *UserPostRatingStorage) UpdateUserOper(newUserPostRating *models.UserPostRating) error {
-	if !s.operAllowed(newUserPostRating.Oper) {
+	if !s.OperAllowed(newUserPostRating.Oper) {
 		return errors.New("invalid oper")
 	}
 
@@ -97,7 +109,7 @@ func (s *UserPostRatingStorage) UpdateUserOper(newUserPostRating *models.UserPos
 }
 
 func (s *UserPostRatingStorage) CreateUserOper(userPostRating *models.UserPostRating) error {
-	if !s.operAllowed(userPostRating.Oper) {
+	if !s.OperAllowed(userPostRating.Oper) {
 		return errors.New("invalid oper")
 	}
 
@@ -108,7 +120,7 @@ func (s *UserPostRatingStorage) CreateUserOper(userPostRating *models.UserPostRa
 	return err
 }
 
-func (s *UserPostRatingStorage) operAllowed(oper rune) bool {
+func (s *UserPostRatingStorage) OperAllowed(oper rune) bool {
 	allowed := false
 	for _, allowedOper := range opers {
 		if oper == allowedOper {
@@ -117,4 +129,12 @@ func (s *UserPostRatingStorage) operAllowed(oper rune) bool {
 		}
 	}
 	return allowed
+}
+
+func (s *UserPostRatingStorage) DeltaToOper(delta int) rune {
+	return deltaToOper[delta]
+}
+
+func (s *UserPostRatingStorage) OperToDelta(oper rune) int {
+	return operToDelta[oper]
 }
