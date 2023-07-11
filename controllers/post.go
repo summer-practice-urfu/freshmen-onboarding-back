@@ -151,8 +151,17 @@ func (c *PostController) changeRating(oper rune, userVk *cache.UserVk, w http.Re
 	delta := c.userPostRatingStor.OperToDelta(oper)
 
 	post.Rating += delta
-	if err := c.postStor.Update(post); err != nil {
+	newRating, err := c.postStor.ChangeRatingRelatively(post.Id, delta)
+	if err != nil {
 		c.logger.Println("Error updating post, \nPost: ", post, "\n Error: ", err.Error())
+		http.Error(w, "Internal server", http.StatusInternalServerError)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(struct {
+		Rating int `json:"rating"`
+	}{Rating: newRating}); err != nil {
+		c.logger.Println("Error encoding rating, \nrating: ", newRating, "\n Error: ", err.Error())
 		http.Error(w, "Internal server", http.StatusInternalServerError)
 		return
 	}

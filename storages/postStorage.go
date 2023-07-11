@@ -118,6 +118,23 @@ func (s *PostStorage) Create(title, content, img string) (string, error) {
 	return id, err
 }
 
+func (s *PostStorage) ChangeRatingRelatively(id string, delta int) (int, error) {
+	rows, err := s.conn.Query(context.Background(), "UPDATE "+s.tableName+
+		"\n set rating=rating+$2"+
+		"\n where id=$1"+
+		"\n returning rating", id, delta)
+
+	if err != nil {
+		return 0, err
+	}
+	var newRating int
+	if err := pgxscan.ScanOne(&newRating, rows); err != nil {
+		return 0, err
+	}
+	s.logger.Println("rating error ", rows.Err())
+	return newRating, nil
+}
+
 func (s *PostStorage) Update(newPost *models.Post) error {
 	_, err := s.conn.Exec(context.Background(), "update "+s.tableName+
 		" set title=$2,"+
