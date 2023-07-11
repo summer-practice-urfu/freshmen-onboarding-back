@@ -99,7 +99,7 @@ func (c *PostController) Increment(w http.ResponseWriter, r *http.Request) {
 
 	c.logger.Println("Token in Increment(): ", tokenDto.SessionToken)
 
-	c.changeRating('-', userVk, w, r)
+	c.changeRating('+', userVk, w, r)
 }
 
 func (c *PostController) Decrement(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +115,7 @@ func (c *PostController) Decrement(w http.ResponseWriter, r *http.Request) {
 
 	c.logger.Println("Token in Decrement(): ", tokenDto.SessionToken)
 
-	c.changeRating('+', userVk, w, r)
+	c.changeRating('-', userVk, w, r)
 }
 
 func (c *PostController) changeRating(oper rune, userVk *cache.UserVk, w http.ResponseWriter, r *http.Request) {
