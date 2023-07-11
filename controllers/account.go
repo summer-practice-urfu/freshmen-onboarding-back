@@ -152,8 +152,8 @@ func (c *AccountController) GetUrl(w http.ResponseWriter, r *http.Request) {
 	url := c.conf.AuthCodeURL("state", oauth2.AccessTypeOffline)
 	c.logger.Println("Generated url in Authenricate(), \nURL: ", url)
 	resp := struct {
-		url string
-	}{url: url}
+		Url string `json:"url"`
+	}{Url: url}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		c.logger.Println("Error encoding url in Authenticate(), \nError: ", err.Error())
 		http.Error(w, "Internal server", http.StatusInternalServerError)
