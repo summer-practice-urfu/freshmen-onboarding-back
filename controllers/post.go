@@ -143,6 +143,18 @@ func (c *PostController) changeRating(oper rune, userVk *cache.UserVk, w http.Re
 		Oper:   oper,
 	}
 	if err := c.userPostRatingStor.SetUserOper(userPostRating); err != nil {
+		if doubleError, isDoubleError := err.(storages.DoubleOperError); isDoubleError {
+			c.logger.Println(doubleError.Error(), doubleError.Data)
+			http.Error(w, doubleError.Error(), http.StatusNotModified)
+			return
+		}
+
+		if invalidOperError, isInvalidOperError := err.(storages.InvalidOperError); isInvalidOperError {
+			c.logger.Println(invalidOperError.Error())
+			http.Error(w, invalidOperError.Error(), http.StatusBadRequest)
+			return
+		}
+
 		c.logger.Printf("Error changing rating in changeRating(), Oper: %v, Error: %v", oper, err.Error())
 		http.Error(w, "Internal server", http.StatusInternalServerError)
 		return

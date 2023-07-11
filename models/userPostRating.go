@@ -1,7 +1,7 @@
 package models
 
 type UserPostRating struct {
-	UserId int64  `json:"userId"`
-	PostId string `json:"postId"`
-	Oper   rune   `json:"oper"`
+	UserId int64  `json:"userId" db:"userId"`
+	PostId string `json:"postId" db:"postId"`
+	Oper   rune   `json:"oper" db:"oper"`
 }

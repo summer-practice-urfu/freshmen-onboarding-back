@@ -131,7 +131,7 @@ func (s *PostStorage) ChangeRatingRelatively(id string, delta int) (int, error) 
 	if err := pgxscan.ScanOne(&newRating, rows); err != nil {
 		return 0, err
 	}
-	s.logger.Println("rating error ", rows.Err())
+
 	return newRating, nil
 }
 

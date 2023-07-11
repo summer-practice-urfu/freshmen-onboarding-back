@@ -56,10 +56,11 @@ func (s *UserPostRatingStorage) GetUserOper(userId int64, postId string) (*model
 	row, err := s.conn.Query(context.Background(), "SELECT \"userId\", \"postId\", oper "+
 		"\n FROM public.\"UserPostRating\""+
 		"\n WHERE \"postId\" = $1"+
-		"\n AND \"userId\" = $2;", postId, userId)
+		"\n AND \"userId\" = $2 LIMIT 1;", postId, userId)
 	if err != nil {
 		return nil, err
 	}
+
 	var userPostRating models.UserPostRating
 	if err := pgxscan.ScanOne(&userPostRating, row); err != nil {
 		if pgxscan.NotFound(err) {
@@ -72,7 +73,7 @@ func (s *UserPostRatingStorage) GetUserOper(userId int64, postId string) (*model
 
 func (s *UserPostRatingStorage) SetUserOper(userPostRating *models.UserPostRating) error {
 	if !s.OperAllowed(userPostRating.Oper) {
-		return errors.New("invalid oper")
+		return NewInvalidOperError(userPostRating.Oper, nil)
 	}
 
 	existing, err := s.GetUserOper(userPostRating.UserId, userPostRating.PostId)
@@ -81,8 +82,9 @@ func (s *UserPostRatingStorage) SetUserOper(userPostRating *models.UserPostRatin
 		return s.CreateUserOper(userPostRating)
 	}
 
+	s.logger.Println("Existing oper: ", existing.Oper, "newOper: ", userPostRating.Oper)
 	if existing.Oper == userPostRating.Oper && existing.Oper != OperNone {
-		return NewDoubleOperError(userPostRating.Oper, nil)
+		return NewDoubleOperError(userPostRating.Oper, nil, userPostRating)
 	}
 
 	if existing.Oper == OperNone {
