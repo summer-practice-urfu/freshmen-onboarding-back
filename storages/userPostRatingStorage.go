@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"github.com/georgysavva/scany/v2/pgxscan"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 )
 
@@ -19,12 +19,12 @@ var (
 )
 
 type UserPostRatingStorage struct {
-	conn      *pgx.Conn
+	conn      *pgxpool.Pool
 	logger    *log.Logger
 	tableName string
 }
 
-func NewUserPostRatingStorage(logger *log.Logger, conn *pgx.Conn) *UserPostRatingStorage {
+func NewUserPostRatingStorage(logger *log.Logger, conn *pgxpool.Pool) *UserPostRatingStorage {
 	stor := &UserPostRatingStorage{
 		conn:      conn,
 		logger:    logger,

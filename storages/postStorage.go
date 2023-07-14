@@ -6,12 +6,12 @@ import (
 	"context"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
-	pgx "github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 )
 
 type PostStorage struct {
-	conn         *pgx.Conn
+	conn         *pgxpool.Pool
 	logger       *log.Logger
 	tableName    string
 	es           *db.EsDb
@@ -19,7 +19,7 @@ type PostStorage struct {
 	esPostFields []string
 }
 
-func NewPostStorage(logger *log.Logger, conn *pgx.Conn, es *db.EsDb) *PostStorage {
+func NewPostStorage(logger *log.Logger, conn *pgxpool.Pool, es *db.EsDb) *PostStorage {
 	stor := &PostStorage{
 		conn:         conn,
 		logger:       logger,

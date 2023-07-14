@@ -7,7 +7,7 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8080:8080"
+      - "8888:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -19,7 +19,7 @@ services:
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - CLIENT_ID=51698048
       - CLIENT_SECRET=A8hdQOOXeprimL8S1dJj
-      - REDIRECT_URL=http://localhost:8080/acc/verify
+      - REDIRECT_URL=http://localhost:8888/acc/verify
       - REDIS_URL=redis:6379
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432

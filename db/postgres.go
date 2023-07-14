@@ -3,25 +3,26 @@ package db
 import (
 	"context"
 	"github.com/georgysavva/scany/v2/pgxscan"
-	pgx "github.com/jackc/pgx/v5"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"os"
 	"time"
 )
 
 type PostgresDb struct {
-	Conn   *pgx.Conn
+	Conn   *pgxpool.Pool
 	logger *log.Logger
 }
 
 func Init(logger *log.Logger) *PostgresDb {
+
 	url := os.Getenv("DATABASE_URL")
 	logger.Println("url", url)
-	baseConn, err := pgx.Connect(context.Background(), url)
+	baseConn, err := pgxpool.New(context.Background(), url)
 	countRetry := 5
 	for err != nil && countRetry > 0 {
 		time.Sleep(time.Second * 1)
-		baseConn, err = pgx.Connect(context.Background(), url)
+		baseConn, err = pgxpool.New(context.Background(), url)
 		countRetry--
 	}
 	if err != nil {
@@ -31,11 +32,11 @@ func Init(logger *log.Logger) *PostgresDb {
 	if !baseExists(baseConn) {
 		createBase(baseConn)
 	}
-	conn, err := pgx.Connect(context.Background(), url+"/summerPractice")
+	conn, err := pgxpool.New(context.Background(), url+"/summerPractice")
 	countRetry = 5
 	for err != nil && countRetry > 0 {
 		time.Sleep(time.Second * 1)
-		baseConn, err = pgx.Connect(context.Background(), url+"/summerPractice")
+		baseConn, err = pgxpool.New(context.Background(), url+"/summerPractice")
 		countRetry--
 	}
 	if err != nil {
@@ -46,12 +47,10 @@ func Init(logger *log.Logger) *PostgresDb {
 }
 
 func (d *PostgresDb) Close() {
-	if err := d.Conn.Close(context.Background()); err != nil {
-		panic(err)
-	}
+	d.Conn.Close()
 }
 
-func baseExists(conn *pgx.Conn) bool {
+func baseExists(conn *pgxpool.Pool) bool {
 	rows, errQuery := conn.Query(context.Background(), "SELECT datname FROM pg_catalog.pg_database "+
 		"WHERE lower(datname) = lower('summerPractice');")
 	var res []string
@@ -61,7 +60,7 @@ func baseExists(conn *pgx.Conn) bool {
 	return len(res) > 0
 }
 
-func createBase(conn *pgx.Conn) {
+func createBase(conn *pgxpool.Pool) {
 	_, err := conn.Exec(context.Background(), "CREATE DATABASE \"summerPractice\"\n"+
 		"    WITH\n    OWNER = postgres\n"+
 		"    ENCODING = 'UTF8'\n"+
