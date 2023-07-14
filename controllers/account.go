@@ -15,9 +15,10 @@ import (
 )
 
 type AccountController struct {
-	logger      *log.Logger
-	conf        *oauth2.Config
-	sessionStor *storages.SessionStorage
+	logger         *log.Logger
+	conf           *oauth2.Config
+	sessionStor    *storages.SessionStorage
+	endRedirectURL string
 }
 
 var tokens map[string]oauth2.Token
@@ -33,10 +34,13 @@ func NewAccountController(logger *log.Logger, sessionStor *storages.SessionStora
 		Endpoint:     oauthVk.Endpoint,
 	}
 
+	endRedirectURL := os.Getenv("END_REDIRECT_URL")
+
 	return &AccountController{
-		logger:      logger,
-		conf:        conf,
-		sessionStor: sessionStor,
+		logger:         logger,
+		conf:           conf,
+		sessionStor:    sessionStor,
+		endRedirectURL: endRedirectURL,
 	}
 }
 
@@ -138,7 +142,7 @@ func (c *AccountController) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "http://localhost:8080/?sessionToken="+sessionToken, http.StatusSeeOther)
+	http.Redirect(w, r, c.endRedirectURL+"?sessionToken="+sessionToken, http.StatusSeeOther)
 }
 
 type User struct {
